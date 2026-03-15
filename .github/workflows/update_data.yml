@@ -23,6 +23,6 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "action@github.com"
-          git add onbid_data.js fetch_log.txt
+          git add onbid_data.js
           git commit -m "Auto-update onbid data" || exit 0
           git push

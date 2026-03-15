@@ -890,16 +890,225 @@
         }
 
         @media (max-width: 768px) {
+            .main-wrap {
+                margin: 10px auto;
+                padding: 0 10px 40px;
+            }
+
             .header-nav {
                 display: none;
             }
 
-            .filter-bar {
-                flex-direction: column;
+            .logo-text h1 {
+                font-size: 18px;
             }
 
-            .filter-input {
+            .logo-emblem {
+                width: 44px;
+                height: 44px;
+                font-size: 20px;
+            }
+
+            .filter-bar {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 12px;
+                gap: 12px;
+            }
+
+            .filter-input, .custom-multiselect, .filter-select {
+                width: 100% !important;
+            }
+
+            .btn-filter-search,
+            .btn-filter-reset {
                 width: 100%;
+                padding: 12px;
+            }
+
+            .result-controls {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 12px;
+                gap: 10px;
+            }
+
+            .controls-right {
+                margin-left: 0;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+
+            .btn-ctrl {
+                padding: 10px;
+                text-align: center;
+                font-size: 12px;
+            }
+
+            /* Premium Card-based Layout */
+            .result-table-wrap {
+                border: none;
+                background: transparent;
+            }
+
+            .result-table,
+            .result-table thead,
+            .result-table tbody,
+            .result-table th,
+            .result-table td,
+            .result-table tr {
+                display: block;
+            }
+
+            .result-table thead {
+                display: none;
+            }
+
+            .result-table tbody tr {
+                margin-bottom: 20px;
+                border: 1px solid #e0e0e0;
+                border-radius: 12px;
+                background: #fff;
+                padding: 0;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+                overflow: hidden;
+                transition: transform 0.2s, box-shadow 0.2s;
+            }
+
+            .result-table tbody tr:active {
+                transform: scale(0.98);
+                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            }
+
+            .result-table tbody td {
+                border: none;
+                padding: 12px 16px;
+                position: relative;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                min-height: auto;
+                border-bottom: 1px solid #f5f5f5;
+            }
+
+            .result-table tbody td:last-child {
+                border-bottom: none;
+            }
+
+            /* Hide non-essential columns on mobile */
+            .col-no, .col-pnu {
+                display: none !important;
+            }
+
+            /* Address/Title Section */
+            .result-table tbody td.col-addr {
+                display: block;
+                background: #f8fbf9;
+                padding: 16px;
+                border-bottom: 2px solid #eaf3ee;
+            }
+
+            .result-table tbody td.col-addr::before {
+                display: none;
+            }
+
+            .prop-id {
+                font-size: 14px;
+                margin-bottom: 6px;
+            }
+
+            .prop-addr-text {
+                font-size: 15px;
+                font-weight: 700;
+                color: #1a5c2e;
+                margin-bottom: 10px;
+            }
+
+            /* Data Label Styling */
+            .result-table tbody td::before {
+                content: attr(data-label);
+                font-size: 12px;
+                color: #888;
+                font-weight: 500;
+                margin-right: 15px;
+            }
+
+            /* Price and Specific Info */
+            .col-appr, .col-minbid {
+                background: #fff;
+            }
+
+            .price-main {
+                font-size: 14px;
+                color: #333;
+            }
+
+            .price-rate {
+                margin-top: 0;
+                margin-left: 8px;
+                display: inline-block;
+            }
+
+            .col-grade {
+                font-size: 16px !important;
+            }
+
+            .col-area, .col-usbd, .col-grade, .col-period {
+                background: #fff;
+            }
+
+            .col-period {
+                flex-direction: column;
+                align-items: flex-end;
+                gap: 4px;
+            }
+
+            .col-period::before {
+                align-self: flex-start;
+                margin-bottom: -18px;
+            }
+
+            .period-date {
+                text-align: right;
+                font-size: 11px;
+            }
+
+            /* Action Button */
+            .result-table tbody td.col-action {
+                padding: 12px 16px;
+                background: #fff;
+                justify-content: stretch;
+            }
+
+            .result-table tbody td.col-action::before {
+                display: none;
+            }
+
+            .btn-onbid {
+                width: 100%;
+                padding: 14px;
+                font-size: 15px;
+                font-weight: 700;
+                border-radius: 8px;
+                background: linear-gradient(135deg, #1a5c2e 0%, #2d8a4e 100%);
+                box-shadow: 0 4px 10px rgba(45, 138, 78, 0.3);
+            }
+
+            .pagination {
+                padding: 15px;
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .pagination-buttons {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .page-btn {
+                flex-grow: 1;
+                max-width: none;
             }
         }
     </style>
@@ -1435,7 +1644,7 @@
 
             return `
         <tr>
-            <td class="col-no">${no}</td>
+            <td class="col-no" data-label="No.">${no}</td>
             <td class="col-addr">
                 <a href="#" onclick="goOnbid('${item.cltrNo}','${item.pbctNo}');return false;" class="prop-id">${escHtml(item.cltrNo || '-')}</a>
                 <div class="prop-addr-text">${escHtml(item.addr || '-')}</div>
@@ -1446,23 +1655,23 @@
                     ${item.orgNm ? `<span class="tag tag-org">${escHtml(item.orgNm)}</span>` : ''}
                 </div>
             </td>
-            <td class="col-pnu">
+            <td class="col-pnu" data-label="PNU 코드">
                 ${item.pnu && item.pnu !== 'NOT_FOUND' ? `<div style="font-weight:bold; color:#1a5c2e;">${item.pnu}</div>` : '<span style="color:#ccc">매칭실패</span>'}
             </td>
-            <td class="col-area">${area}</td>
-            <td class="col-usbd"><span class="usbd-badge ${usbdClass}">${item.usbdCnt}회</span></td>
-            <td class="col-grade" style="text-align:center; font-weight:bold; color:#1a5c2e;">
+            <td class="col-area" data-label="면적">${area}</td>
+            <td class="col-usbd" data-label="유찰횟수"><span class="usbd-badge ${usbdClass}">${item.usbdCnt}회</span></td>
+            <td class="col-grade" data-label="등급" style="text-align:center; font-weight:bold; color:#1a5c2e;">
                 ${item.grade && item.grade !== '-' ? item.grade : 'C'}
             </td>
 
-            <td class="col-appr">
+            <td class="col-appr" data-label="감정가">
                 <div class="price-main">${escHtml(item.apprAmt || '-')}</div>
             </td>
-            <td class="col-minbid">
+            <td class="col-minbid" data-label="최저입찰가">
                 <div class="price-main">${escHtml(item.minBidAmt || '-')}</div>
                 ${rateHtml}
             </td>
-            <td class="col-period">
+            <td class="col-period" data-label="입찰기간">
                 ${remainHtml}
                 <div class="period-date">
                     ${fmtDate(item.bidBgDt)}<br>
