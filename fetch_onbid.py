@@ -18,7 +18,7 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='repla
 import requests
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
 import pandas as pd
 import re
@@ -101,7 +101,8 @@ def is_forest(item):
 # 4. 로그 함수
 # ─────────────────────────────────────────────
 def log(msg):
-    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    KST = timezone(timedelta(hours=9))
+    now = datetime.now(KST).strftime('%Y-%m-%d %H:%M:%S')
     line = f"[{now}] {msg}"
     print(line)
     try:
@@ -162,23 +163,39 @@ def get_pnu_lookup():
         return {}
 
 def get_grade_lookup():
-    excel_path = os.path.join(SCRIPT_DIR, '강원 산지 등급_260309(필드 삭제).xlsx')
-    if not os.path.exists(excel_path):
-        log(f"! 등급 참조 파일 없음: {excel_path}")
-        return {}
-    try:
-        df = pd.read_excel(excel_path)
-        lookup = {}
-        for _, row in df.iterrows():
-            pnu = str(row['PNU_CD(New)']).strip()
-            grade = str(row['등급']).strip()
-            if pnu and grade:
-                lookup[pnu] = grade
-        log(f"등급 참조 데이터 {len(lookup)}건 로드 완료")
-        return lookup
-    except Exception as e:
-        log(f"! 등급 참조 파일 로드 오류: {e}")
-        return {}
+    """강원 + 경북 산지 등급 참조 데이터 통합 로드"""
+    lookup = {}
+
+    # 로드할 파일 목록 (순서 중요: 나중 파일이 동일 PNU 덮어씀)
+    grade_files = [
+        '강원 산지 등급_260309(필드 삭제).xlsx',
+        '경북 산지 등급_260327.xlsx',
+    ]
+
+    for fname in grade_files:
+        fpath = os.path.join(SCRIPT_DIR, fname)
+        if not os.path.exists(fpath):
+            log(f"! 등급 참조 파일 없음 (건너뜀): {fname}")
+            continue
+        try:
+            df = pd.read_excel(fpath)
+            # PNU 컬럼은 첫 번째(인덱스 0), 등급 컬럼은 두 번째(인덱스 1)
+            pnu_col   = df.columns[0]
+            grade_col = df.columns[1]
+            before = len(lookup)
+            for _, row in df.iterrows():
+                pnu   = str(row[pnu_col]).strip()
+                grade = str(row[grade_col]).strip()
+                if pnu and grade and pnu != 'nan' and grade != 'nan':
+                    lookup[pnu] = grade
+            added = len(lookup) - before
+            log(f"등급 참조 로드: {fname} → {added:,}건 추가 (누계 {len(lookup):,}건)")
+        except Exception as e:
+            log(f"! 등급 참조 파일 로드 오류 ({fname}): {e}")
+
+    if not lookup:
+        log("! 등급 참조 데이터 없음 - 모든 항목 C 등급으로 처리됩니다")
+    return lookup
 
 
 def parse_lot_number(lot_str):
@@ -311,54 +328,70 @@ def fetch_region_prpt(region, prpt_cd, prpt_nm, seen_ids):
             'bidDivCd'    : '0001',   # 전자입찰 (필수 파라미터)
             'lctnSdnm'    : region,   # 지역 필터 (서버 측)
         }
-        try:
-            resp = requests.get(URL, params=params, timeout=60)
-            if resp.status_code != 200:
-                log(f"    [HTTP오류] {resp.status_code}")
-                break
+        MAX_RETRY = 3
+        for retry in range(MAX_RETRY):
+            try:
+                resp = requests.get(URL, params=params, timeout=60)
+                if resp.status_code != 200:
+                    log(f"    [HTTP오류] {resp.status_code}")
+                    break
 
-            data = resp.json()
-            header = data.get('header', data.get('result', {}))
-            rc = header.get('resultCode', '')
+                data = resp.json()
+                header = data.get('header', data.get('result', {}))
+                rc = header.get('resultCode', '')
 
-            if rc == '03':   # NODATA
-                break
-            if rc not in ('00', '0', '200'):
-                log(f"    [API오류] {rc}: {header.get('resultMsg','')}")
-                return None
+                if rc == '03':   # NODATA
+                    break
+                if rc not in ('00', '0', '200'):
+                    log(f"    [API오류] {rc}: {header.get('resultMsg','')}")
+                    return None
 
-            body = data.get('body', {})
-            total_cnt = int(body.get('totalCount', 0))
-            items_node = body.get('items', {})
-            raw = items_node.get('item', []) if isinstance(items_node, dict) else []
-            if isinstance(raw, dict):
-                raw = [raw]
+                body = data.get('body', {})
+                total_cnt = int(body.get('totalCount', 0))
+                items_node = body.get('items', {})
+                raw = items_node.get('item', []) if isinstance(items_node, dict) else []
+                if isinstance(raw, dict):
+                    raw = [raw]
 
-            for item in raw:
-                usbd = safe_int(item.get('usbdNft', 0))
-                if usbd < 2:
-                    continue
-                if not is_forest(item):
-                    continue
-                uid = item.get('cltrMngNo', '')
-                if uid and uid in seen_ids:
-                    continue
-                if uid:
-                    seen_ids.add(uid)
-                results.append(clean_item(item))
+                for item in raw:
+                    usbd = safe_int(item.get('usbdNft', 0))
+                    if usbd < 2:
+                        continue
+                    if not is_forest(item):
+                        continue
+                    uid = item.get('cltrMngNo', '')
+                    if uid and uid in seen_ids:
+                        continue
+                    if uid:
+                        seen_ids.add(uid)
+                    results.append(clean_item(item))
 
-            # 페이지 끝 판단
-            if page * ROWS_PER_PAGE >= total_cnt or len(raw) < ROWS_PER_PAGE:
-                break
-            page += 1
-            time.sleep(0.3)   # API 호출 간격
+                # 페이지 끝 판단
+                if page * ROWS_PER_PAGE >= total_cnt or len(raw) < ROWS_PER_PAGE:
+                    break
+                page += 1
+                time.sleep(0.3)   # API 호출 간격
+                break  # 성공 시 재시도 루프 탈출
 
-        except requests.exceptions.Timeout:
-            log(f"    [타임아웃] {region}/{prpt_nm} p{page}")
-            return None
-        except Exception as e:
-            log(f"    [오류] {e}")
-            return None
+            except requests.exceptions.Timeout:
+                wait = 10 * (retry + 1)
+                log(f"    [타임아웃] {region}/{prpt_nm} p{page} — 재시도 {retry+1}/{MAX_RETRY} ({wait}초 후)")
+                if retry < MAX_RETRY - 1:
+                    time.sleep(wait)
+                else:
+                    return None
+            except Exception as e:
+                err_str = str(e)
+                if 'NameResolutionError' in err_str or 'getaddrinfo' in err_str:
+                    wait = 15 * (retry + 1)
+                    log(f"    [DNS오류] {region}/{prpt_nm} — 재시도 {retry+1}/{MAX_RETRY} ({wait}초 후)")
+                    if retry < MAX_RETRY - 1:
+                        time.sleep(wait)
+                    else:
+                        return None
+                else:
+                    log(f"    [오류] {e}")
+                    return None
 
     return results
 
@@ -393,7 +426,8 @@ def fetch_all():
 # 9. JS 파일로 저장
 # ─────────────────────────────────────────────
 def save_as_js(items):
-    now_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+    KST = timezone(timedelta(hours=9))
+    now_str = datetime.now(KST).strftime('%Y-%m-%d %H:%M (KST)')
     payload = {
         'updatedAt' : now_str,
         'totalCount': len(items),
@@ -415,13 +449,13 @@ def save_as_js(items):
 # ─────────────────────────────────────────────
 if __name__ == '__main__':
     log("=" * 55)
-    log("산지 공매 데이터 수집 시작 (v1.5 — 전 지역/전 페이지)")
+    log("산지 공매 데이터 수집 시작 (v1.6 — 재시도 로직 + 다중 등급 파일)")
     t0 = time.time()
     items = fetch_all()
     elapsed = time.time() - t0
-    
+
+    # PNU 및 등급 생성 (수집된 항목이 있을 때만)
     if items:
-        # PNU 생성
         lookup = get_pnu_lookup()
         if lookup:
             log("PNU 코드 및 등급 생성 중...")
@@ -429,17 +463,14 @@ if __name__ == '__main__':
             for item in items:
                 pnu = generate_pnu(item['addr'], lookup)
                 item['pnu'] = pnu
-                # Match Grade
-                if pnu in grade_lookup:
-                    item['grade'] = grade_lookup[pnu]
-                else:
-                    item['grade'] = 'C'
+                item['grade'] = grade_lookup.get(pnu, 'C')
+        else:
+            for item in items:
+                item['pnu'] = ''
+                item['grade'] = 'C'
 
-        
-        save_as_js(items)
-        log(f"최종 결과: 유찰 2회 이상 임야 {len(items)}건 저장 ({elapsed:.0f}초)")
-    else:
-        log("수집된 데이터가 없거나 수집 중 오류가 발생했습니다.")
-        
+    # 수집 결과 저장 (항목이 없어도 오류 없으면 저장)
+    save_as_js(items)
+    log(f"최종 결과: 유찰 2회 이상 임야 {len(items)}건 저장 ({elapsed:.0f}초)")
     log("수집 완료")
     log("=" * 55)

@@ -1,28 +1,36 @@
 name: Update Onbid Data
+
 on:
   schedule:
-    - cron: '0 0 * * *' # 매일 자정 실행 (UTC 기준)
-  workflow_dispatch: # 수동 실행 버튼 추가
+    - cron: '0 0 * * *'  # 매일 UTC 00:00 (KST 09:00) 실행
+  workflow_dispatch:       # 수동 실행 버튼
 
 jobs:
-  build:
+  update:
     runs-on: ubuntu-latest
+    timeout-minutes: 360   # 최대 6시간 (대규모 수집 시 필요)
+
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
+
       - name: Install dependencies
         run: pip install requests pandas openpyxl
-      - name: Run update script
+
+      - name: Run fetch script
         env:
           ONBID_AUTH_KEY: ${{ secrets.ONBID_AUTH_KEY }}
         run: python fetch_onbid.py
-      - name: Commit and Push
+
+      - name: Commit and push updated data
         run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "action@github.com"
-          git add onbid_data.js
-          git commit -m "Auto-update onbid data" || exit 0
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add onbid_data.js fetch_log.txt
+          git diff --cached --quiet && echo "변경사항 없음 - 커밋 생략" || git commit -m "chore: auto-update onbid data [$(date -u '+%Y-%m-%d %H:%M UTC')]"
           git push
